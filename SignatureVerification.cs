@@ -8,7 +8,6 @@ using System.Security.Cryptography.Xml;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
-using System.Xml.XPath;
 using System.Linq;
 
 namespace NemIDSignatureVerification
@@ -36,23 +35,23 @@ namespace NemIDSignatureVerification
             signature.LoadXml(sigElement);
 
             // Extract signature value for SignedInfo 
-            XPathNavigator nav = doc.CreateNavigator();
+            var nav = doc.CreateNavigator();
             nav.MoveToFollowing("SignatureValue", "http://www.w3.org/2000/09/xmldsig#");
             var signatureValue = Regex.Replace(nav.InnerXml.Trim(), @"\s", "");
-            byte[] sigVal = Convert.FromBase64String(signatureValue);
+            var sigVal = Convert.FromBase64String(signatureValue);
 
             // Extract SignedInfo and hash 
             var signedInfo = doc.GetElementsByTagName("ds:SignedInfo")[0];
             var ns = RetrieveNameSpaces((XmlElement) signedInfo);
             InsertNamespacesIntoElement(ns, (XmlElement) signedInfo);
-            Stream signedInfoStream = CanonicalizeNode(signedInfo);
-            SHA256 sha256 = SHA256.Create();
-            byte[] hashedSignedInfo = sha256.ComputeHash(signedInfoStream);
+            var signedInfoStream = CanonicalizeNode(signedInfo);
+            var sha256 = SHA256.Create();
+            var hashedSignedInfo = sha256.ComputeHash(signedInfoStream);
 
             // Validate signature for SignedInfo
             try {
-                var Csp = getSignerCertificate(signature).PublicKey.Key as RSACryptoServiceProvider;
-                var validSignatureValue = Csp.VerifyHash(hashedSignedInfo, CryptoConfig.MapNameToOID("SHA256"), sigVal);
+                var csp = GetSignerCertificate(signature).PublicKey.Key as RSACryptoServiceProvider;
+                var validSignatureValue = csp.VerifyHash(hashedSignedInfo, CryptoConfig.MapNameToOID("SHA256"), sigVal);
                 
                 return validSignatureValue && AreValidReferences(doc);
             
@@ -62,12 +61,17 @@ namespace NemIDSignatureVerification
             }
         }
 
-        private static X509Certificate2 getSignerCertificate(SignedXml signature) {
+        private static X509Certificate2 GetSignerCertificate(SignedXml signature) {
             // Extract all certificates from signature
-            X509Chain certificateChain = new X509Chain();
-            certificateChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-            certificateChain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreWrongUsage;
-            certificateChain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
+            var certificateChain = new X509Chain
+            {
+                ChainPolicy =
+                {
+                    RevocationMode = X509RevocationMode.NoCheck,
+                    VerificationFlags = X509VerificationFlags.IgnoreWrongUsage,
+                    RevocationFlag = X509RevocationFlag.ExcludeRoot
+                }
+            };
             X509Certificate2 signerCertificate = null;
             foreach (var clause in signature.KeyInfo)
             {
@@ -75,21 +79,21 @@ namespace NemIDSignatureVerification
                 foreach (var x509Cert in ((KeyInfoX509Data)clause).Certificates)
                 {
                     X509Certificate2 certificate;
-                    if(x509Cert is X509Certificate) {
-                        certificate = new X509Certificate2(x509Cert as X509Certificate);
+                    if(x509Cert.GetType() == typeof(X509Certificate)) {
+                        certificate = new X509Certificate2((X509Certificate)x509Cert);
 
                     } else {
                         certificate = x509Cert as X509Certificate2;
                     }
 
-                    var keyUsage = (certificate.Extensions["2.5.29.15"] as X509KeyUsageExtension)?.KeyUsages.ToString();
+                    var keyUsage = (certificate?.Extensions["2.5.29.15"] as X509KeyUsageExtension)?.KeyUsages.ToString();
                     if (keyUsage != null && keyUsage.Contains("DigitalSignature") && !keyUsage.Contains("CrlSign")) {
                         signerCertificate = certificate;
 
-                    } else {
+                    } else if(certificate != null) {
                         certificateChain.ChainPolicy.ExtraStore.Add(certificate);
                     }
-                    Console.WriteLine(certificate.Subject);
+                    //Console.WriteLine(certificate.Subject);
                 }
             }
 
@@ -114,22 +118,21 @@ namespace NemIDSignatureVerification
                 throw new Exception("Certificate chain does not validate: " + certificateChain.ChainStatus[0].StatusInformation);
             }
 
-            // TODO: Verify certificate chain
             return signerCertificate;
         }
 
         private static bool AreValidReferences(XmlDocument doc)
         {
-            XmlNamespaceManager man = new XmlNamespaceManager(doc.NameTable);
+            var man = new XmlNamespaceManager(doc.NameTable);
             man.AddNamespace("openoces", "http://www.openoces.org/2006/07/signature#");
             man.AddNamespace("ds", "http://www.w3.org/2000/09/xmldsig#");
-            XmlNodeList messageReferences = doc.SelectNodes("//openoces:signature/ds:Signature/ds:SignedInfo/ds:Reference", man);
+            var messageReferences = doc.SelectNodes("//openoces:signature/ds:Signature/ds:SignedInfo/ds:Reference", man);
             if (messageReferences == null || messageReferences.Count == 0)
             {
                 return false;
             }
 
-            bool result = true;
+            var result = true;
             foreach (XmlNode node in messageReferences)
             {
                 result &= IsValidReference(doc ,node);
@@ -139,32 +142,32 @@ namespace NemIDSignatureVerification
 
         private static bool IsValidReference(XmlDocument doc ,XmlNode node)
         {
-            XPathNavigator elementNav = node.CreateNavigator();
-            string elementID = elementNav.GetAttribute("URI", "");
-            if (elementID.StartsWith("#"))
+            var elementNav = node.CreateNavigator();
+            var elementId = elementNav.GetAttribute("URI", "");
+            if (elementId.StartsWith("#"))
             {
-                elementID = elementID.Substring(1);
+                elementId = elementId.Substring(1);
             }
 
-            XmlElement referencedNode = RetrieveElementByAttribute(doc, "Id", elementID);
+            var referencedNode = RetrieveElementByAttribute(doc, "Id", elementId);
             InsertNamespacesIntoElement(RetrieveNameSpaces((XmlElement)referencedNode.ParentNode), referencedNode);
 
-            Stream canonicalizedNodeStream = CanonicalizeNode(referencedNode);
+            var canonicalizedNodeStream = CanonicalizeNode(referencedNode);
 
             elementNav.MoveToFollowing("DigestMethod", "http://www.w3.org/2000/09/xmldsig#");
-            HashAlgorithm hashAlg = (HashAlgorithm)CryptoConfig.CreateFromName(elementNav.GetAttribute("Algorithm", ""));
-            byte[] hashedNode = hashAlg.ComputeHash(canonicalizedNodeStream);
+            var hashAlg = (HashAlgorithm)CryptoConfig.CreateFromName(elementNav.GetAttribute("Algorithm", ""));
+            var hashedNode = hashAlg.ComputeHash(canonicalizedNodeStream);
 
             elementNav.MoveToFollowing("DigestValue", "http://www.w3.org/2000/09/xmldsig#");
-            byte[] digestValue = Convert.FromBase64String(elementNav.InnerXml);
+            var digestValue = Convert.FromBase64String(elementNav.InnerXml);
 
             return hashedNode.SequenceEqual(digestValue);
         }
 
-        private static Hashtable RetrieveNameSpaces(XmlElement xEle)
+        private static Hashtable RetrieveNameSpaces(XmlNode xEle)
         {
-            Hashtable foundNamespaces = new Hashtable();
-            XmlNode currentNode = xEle;
+            var foundNamespaces = new Hashtable();
+            var currentNode = xEle;
 
             while (currentNode != null)
             {
@@ -178,7 +181,7 @@ namespace NemIDSignatureVerification
 
                 if (currentNode.Attributes != null && currentNode.Attributes.Count > 0)
                 {
-                    for (int i = 0; i < currentNode.Attributes.Count; i++)
+                    for (var i = 0; i < currentNode.Attributes.Count; i++)
                     {
                         if (currentNode.Attributes[i].Prefix.Equals("xmlns") || currentNode.Attributes[i].Name.Equals("xmlns"))
                         {
@@ -196,14 +199,14 @@ namespace NemIDSignatureVerification
 
         private static void InsertNamespacesIntoElement(Hashtable namespacesHash, XmlElement node)
         {
-            XPathNavigator nav = node.CreateNavigator();
+            var nav = node.CreateNavigator();
             if (string.IsNullOrEmpty(nav.Prefix) && string.IsNullOrEmpty(nav.GetAttribute("xmlns", "")))
             {
                 nav.CreateAttribute("", "xmlns", "", nav.NamespaceURI);
             }
             foreach (DictionaryEntry namespacePair in namespacesHash)
             {
-                string[] attrName = ((string)namespacePair.Key).Split(':');
+                var attrName = ((string)namespacePair.Key).Split(':');
                 if (attrName.Length > 1 && !node.HasAttribute(attrName[0] + ":" + attrName[1]))
                 {
                     nav.CreateAttribute(attrName[0], attrName[1], "", (string)namespacePair.Value);
@@ -213,7 +216,7 @@ namespace NemIDSignatureVerification
 
         private static Stream CanonicalizeNode(XmlNode node)
         {
-            XmlNodeReader reader = new XmlNodeReader(node);
+            var reader = new XmlNodeReader(node);
             Stream stream = new MemoryStream();
             XmlWriter writer = new XmlTextWriter(stream, Encoding.UTF8);
 
@@ -221,7 +224,7 @@ namespace NemIDSignatureVerification
             writer.Flush();
 
             stream.Position = 0;
-            XmlDsigC14NTransform transform = new XmlDsigC14NTransform();
+            var transform = new XmlDsigC14NTransform();
             transform.LoadInput(stream);
             return (Stream)transform.GetOutput();
         }
@@ -250,7 +253,7 @@ namespace NemIDSignatureVerification
 
         private static void DumpSteam(Stream stream) {
             Console.WriteLine("------");
-            long position = stream.Position;
+            var position = stream.Position;
             var streamReader = new StreamReader(stream);
             Console.WriteLine(streamReader.ReadToEnd());
             stream.Seek(position, SeekOrigin.Begin);
