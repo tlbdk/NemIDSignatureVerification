@@ -150,7 +150,6 @@ namespace NemIDSignatureVerification
             InsertNamespacesIntoElement(RetrieveNameSpaces((XmlElement)referencedNode.ParentNode), referencedNode);
 
             Stream canonicalizedNodeStream = CanonicalizeNode(referencedNode);
-            //DumpSteam(canonicalizedNodeStream);
 
             elementNav.MoveToFollowing("DigestMethod", "http://www.w3.org/2000/09/xmldsig#");
             HashAlgorithm hashAlg = (HashAlgorithm)CryptoConfig.CreateFromName(elementNav.GetAttribute("Algorithm", ""));
