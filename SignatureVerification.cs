@@ -8,12 +8,18 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace NemIDSignatureVerification
 {
     public class SignatureVerification
     {
         public static bool validateSignature(string xml)
+        {
+            return extractValidSignatureRefrences(xml) != null;
+        }
+        
+        public static List<XmlElement> extractValidSignatureRefrences(string xml)
         {
             // Load XML Document
             var stream = new MemoryStream(Encoding.Default.GetBytes(xml));
@@ -51,12 +57,18 @@ namespace NemIDSignatureVerification
             try {
                 var csp = GetSignerCertificate(signature).PublicKey.Key as RSACryptoServiceProvider;
                 var validSignatureValue = csp.VerifyHash(hashedSignedInfo, CryptoConfig.MapNameToOID("SHA256"), sigVal);
-                
-                return validSignatureValue && AreValidReferences(doc);
+                var referencedNodes = GetValidReferences(doc);
+
+                if(validSignatureValue && referencedNodes != null) {
+                    return referencedNodes;
+
+                } else {
+                    return null;
+                }
             
             } catch (Exception ex) {
                 Console.WriteLine(ex.Message);
-                return false;
+                return null;
             }
         }
 
@@ -120,7 +132,7 @@ namespace NemIDSignatureVerification
             return signerCertificate;
         }
 
-        private static bool AreValidReferences(XmlDocument doc)
+        private static List<XmlElement> GetValidReferences(XmlDocument doc)
         {
             var man = new XmlNamespaceManager(doc.NameTable);
             man.AddNamespace("openoces", "http://www.openoces.org/2006/07/signature#");
@@ -128,18 +140,24 @@ namespace NemIDSignatureVerification
             var messageReferences = doc.SelectNodes("//openoces:signature/ds:Signature/ds:SignedInfo/ds:Reference", man);
             if (messageReferences == null || messageReferences.Count == 0)
             {
-                return false;
+                return null;
             }
 
-            var result = true;
+            var results = new List<XmlElement>();
             foreach (XmlNode node in messageReferences)
             {
-                result &= IsValidReference(doc ,node);
+                var referencedNode = GetValidReference(doc ,node);
+                if(referencedNode != null) {
+                    results.Add(referencedNode);
+                
+                } else {
+                    return null;
+                }
             }
-            return result;
+            return results;
         }
 
-        private static bool IsValidReference(XmlDocument doc ,XmlNode node)
+        private static XmlElement GetValidReference(XmlDocument doc, XmlNode node)
         {
             var elementNav = node.CreateNavigator();
             var elementId = elementNav.GetAttribute("URI", "");
@@ -159,8 +177,13 @@ namespace NemIDSignatureVerification
 
             elementNav.MoveToFollowing("DigestValue", "http://www.w3.org/2000/09/xmldsig#");
             var digestValue = Convert.FromBase64String(elementNav.InnerXml);
+            
+            if(hashedNode.SequenceEqual(digestValue)) {
+                return referencedNode;
 
-            return hashedNode.SequenceEqual(digestValue);
+            } else {
+                return null;
+            }
         }
 
         private static Hashtable RetrieveNameSpaces(XmlNode xEle)
