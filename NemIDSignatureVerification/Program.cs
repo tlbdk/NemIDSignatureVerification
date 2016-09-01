@@ -30,6 +30,7 @@ namespace NemIDSignatureVerification
 							   .Select(x => x.Element(openoces_ns + "Value")?.Value)
 							   .FirstOrDefault();
 
+            // TODO: Validate that the signature was valid at the time of signing
 			var payload = new SignicatPayload(signicatPayload);
 			var pdfResult = payload.validateAttachment(0, "/Users/trbe/RiderProjects/NemIDSignatureVerification/NemIDSignatureVerification/sample.pdf");
 			Console.WriteLine("sample.xml: " + (result2 != null && pdfResult));

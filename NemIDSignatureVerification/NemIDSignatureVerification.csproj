@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>F9252C36-33CF-4166-BDF3-9542CD8642F7</ProjectGuid>
+    <ProjectGuid>{F9252C36-33CF-4166-BDF3-9542CD8642F7}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>NemIDSignatureVerification</RootNamespace>
@@ -52,7 +52,9 @@
     <Compile Include="SignicatPayload.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="sample.xml" />
+    <Content Include="sample.xml">
+      <SubType>Designer</SubType>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
